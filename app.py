@@ -49,15 +49,15 @@ col1, col2 = st.columns(2)
 example_legit = {c: 1 for c in FEATURE_COLUMNS}
 example_phish = {c: -1 for c in FEATURE_COLUMNS}
 
-if "values" not in st.session_state:
-    st.session_state.values = {c: 0 for c in FEATURE_COLUMNS}
+if "feature_values" not in st.session_state:
+    st.session_state["feature_values"] = {c: 0 for c in FEATURE_COLUMNS}
 
 with col1:
     if st.button("✅ Load 'Typical Legitimate' Example", use_container_width=True):
-        st.session_state.values = dict(example_legit)
+        st.session_state["feature_values"] = dict(example_legit)
 with col2:
     if st.button("🚩 Load 'Typical Phishing' Example", use_container_width=True):
-        st.session_state.values = dict(example_phish)
+        st.session_state["feature_values"] = dict(example_phish)
 
 st.divider()
 st.subheader("Website Feature Values")
@@ -68,16 +68,16 @@ for group_name, features in GROUPS.items():
         cols = st.columns(3)
         for i, feat in enumerate(features):
             with cols[i % 3]:
-                st.session_state.values[feat] = st.select_slider(
+                st.session_state["feature_values"][feat] = st.select_slider(
                     feat, options=[-1, 0, 1],
-                    value=st.session_state.values.get(feat, 0),
+                    value=st.session_state["feature_values"].get(feat, 0),
                     key=f"slider_{feat}",
                 )
 
 st.divider()
 
 if st.button("🔍 Classify This Website", type="primary", use_container_width=True):
-    input_vector = np.array([[st.session_state.values[c] for c in FEATURE_COLUMNS]])
+    input_vector = np.array([[st.session_state["feature_values"][c] for c in FEATURE_COLUMNS]])
     prediction = model.predict(input_vector)[0]
     proba = model.predict_proba(input_vector)[0]
     classes = list(model.classes_)
