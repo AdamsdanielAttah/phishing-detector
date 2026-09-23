@@ -1,26 +1,44 @@
-import streamlit as st
-import joblib
 import json
+from pathlib import Path
+
+import joblib
 import numpy as np
+import streamlit as st
 
-st.set_page_config(page_title="Phishing Website Detector", page_icon="🛡️", layout="centered")
+BASE_DIR = Path(__file__).resolve().parent
 
-# ---------- Load the real trained model ----------
+st.set_page_config(
+    page_title="Phishing Website Detector",
+    page_icon="🛡️",
+    layout="centered",
+)
+
+MODEL_PATH = BASE_DIR / "phishing_rf_model.pkl"
+FEATURE_PATH = BASE_DIR / "feature_columns.json"
+
+
 @st.cache_resource
 def load_model():
-    model = joblib.load("phishing_rf_model.pkl")
-    with open("feature_columns.json") as f:
+    """Load the trained model and the exact feature order used during training."""
+    model = joblib.load(MODEL_PATH)
+    with FEATURE_PATH.open(encoding="utf-8") as f:
         columns = json.load(f)
     return model, columns
 
-model, FEATURE_COLUMNS = load_model()
 
-# Grouped for a friendlier UI (standard UCI Phishing Dataset categories)
+try:
+    model, FEATURE_COLUMNS = load_model()
+except Exception as exc:
+    st.error("The model could not be loaded.")
+    st.code(str(exc))
+    st.stop()
+
 GROUPS = {
     "Address Bar Based Features": [
         "having_IP_Address", "URL_Length", "Shortining_Service", "having_At_Symbol",
-        "double_slash_redirecting", "Prefix_Suffix", "having_Sub_Domain", "SSLfinal_State",
-        "Domain_registeration_length", "Favicon", "port", "HTTPS_token",
+        "double_slash_redirecting", "Prefix_Suffix", "having_Sub_Domain",
+        "SSLfinal_State", "Domain_registeration_length", "Favicon", "port",
+        "HTTPS_token",
     ],
     "Abnormal-Based Features": [
         "Request_URL", "URL_of_Anchor", "Links_in_tags", "SFH",
@@ -35,69 +53,124 @@ GROUPS = {
     ],
 }
 
+# Keep the UI and the model contract synchronized.
+missing = [feature for group in GROUPS.values() for feature in group if feature not in FEATURE_COLUMNS]
+if missing or len(FEATURE_COLUMNS) != 30:
+    st.error("Feature configuration is invalid. Expected the 30 UCI phishing features.")
+    if missing:
+        st.write("Missing:", missing)
+    st.stop()
+
 st.title("🛡️ Phishing Website Detector")
-st.caption("Machine Learning-based classifier · Project #23 · Built for Ochuma Chambers")
-st.write(
-    "This tool uses a trained **Random Forest** model (97.4% accuracy, 0.998 ROC-AUC on held-out test data) "
-    "to classify a website as **Legitimate** or **Phishing** based on 30 structural/metadata features."
+st.caption("Project #23 · Random Forest Machine Learning Classifier")
+
+st.info(
+    "This project classifies a website using 30 pre-extracted phishing-detection "
+    "features from the UCI Phishing Websites dataset. It is a feature-based ML "
+    "classifier; it does not automatically visit or scan a URL."
 )
+
+with st.sidebar:
+    st.header("About the model")
+    st.write("**Algorithm:** Random Forest")
+    st.write("**Features:** 30")
+    st.write("**Dataset:** UCI Phishing Websites")
+    st.write("**Classes:** Legitimate / Phishing")
+    st.caption(
+        "The model probability shown after prediction is the Random Forest's "
+        "predicted class probability; it is not a guarantee of real-world safety."
+    )
 
 st.divider()
 
 # ---------- Example presets ----------
-col1, col2 = st.columns(2)
-example_legit = {c: 1 for c in FEATURE_COLUMNS}
-example_phish = {c: -1 for c in FEATURE_COLUMNS}
+example_legit = {feature: 1 for feature in FEATURE_COLUMNS}
+example_phish = {feature: -1 for feature in FEATURE_COLUMNS}
+example_neutral = {feature: 0 for feature in FEATURE_COLUMNS}
 
 if "feature_values" not in st.session_state:
-    st.session_state["feature_values"] = {c: 0 for c in FEATURE_COLUMNS}
+    st.session_state.feature_values = dict(example_neutral)
+
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("✅ Load 'Typical Legitimate' Example", use_container_width=True):
-        st.session_state["feature_values"] = dict(example_legit)
+    if st.button("✅ Legitimate example", use_container_width=True):
+        st.session_state.feature_values = dict(example_legit)
+        st.rerun()
+
 with col2:
-    if st.button("🚩 Load 'Typical Phishing' Example", use_container_width=True):
-        st.session_state["feature_values"] = dict(example_phish)
+    if st.button("🚩 Phishing example", use_container_width=True):
+        st.session_state.feature_values = dict(example_phish)
+        st.rerun()
+
+with col3:
+    if st.button("↩️ Reset", use_container_width=True):
+        st.session_state.feature_values = dict(example_neutral)
+        st.rerun()
 
 st.divider()
 st.subheader("Website Feature Values")
-st.caption("For each feature: **1 = Safe indicator, 0 = Suspicious, -1 = Risky indicator** (as encoded in the UCI Phishing Websites Dataset).")
+st.caption(
+    "Use the dataset encoding: **1 = legitimate indicator, 0 = suspicious/neutral, "
+    "-1 = phishing indicator**. These values represent features extracted from a "
+    "website; they are not ordinary user ratings."
+)
 
 for group_name, features in GROUPS.items():
     with st.expander(group_name, expanded=(group_name == "Address Bar Based Features")):
         cols = st.columns(3)
-        for i, feat in enumerate(features):
-            with cols[i % 3]:
-                st.session_state["feature_values"][feat] = st.select_slider(
-                    feat, options=[-1, 0, 1],
-                    value=st.session_state["feature_values"].get(feat, 0),
-                    key=f"slider_{feat}",
+        for index, feature in enumerate(features):
+            with cols[index % 3]:
+                st.session_state.feature_values[feature] = st.select_slider(
+                    feature,
+                    options=[-1, 0, 1],
+                    value=st.session_state.feature_values.get(feature, 0),
+                    key=f"slider_{feature}",
                 )
 
 st.divider()
 
-if st.button("🔍 Classify This Website", type="primary", use_container_width=True):
-    input_vector = np.array([[st.session_state["feature_values"][c] for c in FEATURE_COLUMNS]])
-    prediction = model.predict(input_vector)[0]
-    proba = model.predict_proba(input_vector)[0]
-    classes = list(model.classes_)
+if st.button("🔍 Classify Features", type="primary", use_container_width=True):
+    try:
+        input_vector = np.array(
+            [[st.session_state.feature_values[feature] for feature in FEATURE_COLUMNS]],
+            dtype=int,
+        )
 
-    is_legit = prediction == 1
+        prediction = model.predict(input_vector)[0]
+        probabilities = model.predict_proba(input_vector)[0]
+        classes = list(model.classes_)
 
-    if is_legit:
-        confidence = proba[classes.index(1)] * 100
-        st.success(f"### ✅ Legitimate Website\n**Confidence: {confidence:.1f}%**")
-    else:
-        confidence = proba[classes.index(-1)] * 100
-        st.error(f"### 🚩 Phishing Website Detected\n**Confidence: {confidence:.1f}%**")
+        if prediction not in classes:
+            raise ValueError(f"Unexpected model class: {prediction}")
 
-    with st.expander("See raw probability breakdown"):
-        for c, p in zip(classes, proba):
-            label = "Legitimate" if c == 1 else "Phishing"
-            st.write(f"{label}: {p*100:.2f}%")
+        predicted_probability = probabilities[classes.index(prediction)] * 100
+
+        if prediction == 1:
+            st.success(
+                f"### ✅ Classified as Legitimate\n"
+                f"**Model probability: {predicted_probability:.1f}%**"
+            )
+        elif prediction == -1:
+            st.error(
+                f"### 🚩 Classified as Phishing\n"
+                f"**Model probability: {predicted_probability:.1f}%**"
+            )
+        else:
+            st.warning(f"Unknown class returned by the model: {prediction}")
+
+        with st.expander("See probability breakdown"):
+            for class_value, probability in zip(classes, probabilities):
+                label = "Legitimate" if class_value == 1 else "Phishing"
+                st.write(f"**{label}:** {probability * 100:.2f}%")
+
+    except Exception as exc:
+        st.error("Prediction failed.")
+        st.code(str(exc))
 
 st.divider()
 st.caption(
-    "Model: Random Forest (200 trees) · Trained on UCI Phishing Websites Dataset (11,055 records, 30 features) · "
-    "Project #23 — Phishing Website Detection Using Machine Learning"
+    "Random Forest model · 30 UCI phishing features · "
+    "For educational/demo use; a real deployment should add automated feature extraction, "
+    "URL validation, monitoring, and independent security testing."
 )
