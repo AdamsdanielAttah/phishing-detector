@@ -185,9 +185,41 @@ The training script:
 
 ### Model Evaluation
 
-The project should report actual metrics obtained from the **exact dataset and training run used for the final submission**.
+A reproducible evaluation was run on the uploaded `PhishingWebsites.csv` dataset using the same configuration documented in `train_model.py`:
 
-The earlier project description mentioned **97.4% accuracy and 0.998 ROC-AUC**. These numbers are **not treated as verified results unless reproduced by running the included training/evaluation pipeline on the exact dataset and split**.
+- Dataset: 11,055 rows and 30 input features
+- Target: `Result`
+- Target mapping: `-1 = Phishing`, `1 = Legitimate`
+- Train/test split: 80% / 20%, stratified
+- Training rows: 8,844
+- Testing rows: 2,211
+- Random state: 42
+- Random Forest trees: 200
+- Class weighting: `balanced`
+
+Verified test-set results:
+
+| Metric | Result |
+|---|---:|
+| Accuracy | **97.42%** |
+| Precision — Phishing | **97.82%** |
+| Recall — Phishing | **96.33%** |
+| F1-score — Phishing | **97.07%** |
+| Precision — Legitimate | **97.11%** |
+| Recall — Legitimate | **98.29%** |
+| F1-score — Legitimate | **97.70%** |
+| ROC-AUC (Legitimate as positive class) | **99.78%** |
+
+### Confusion Matrix
+
+| Actual / Predicted | Phishing | Legitimate |
+|---|---:|---:|
+| Phishing | 944 | 36 |
+| Legitimate | 21 | 1,210 |
+
+The model correctly classified **2,154 of 2,211** held-out test samples. There were **36 phishing websites classified as legitimate** (false negatives for the phishing class) and **21 legitimate websites classified as phishing**.
+
+These results are based on the exact uploaded dataset and the reproducible Random Forest configuration in `train_model.py`. They replace the earlier unverified README figures of 97.4% accuracy and 0.998 ROC-AUC.
 
 ## Software Implementation
 
